@@ -5,6 +5,7 @@ A minimal Node.js proxy server that forwards all incoming traffic to a VPC priva
 ## Usage
 
 1. Set the environment variable:
+
    ```bash
    export PRIVATE_LINK_DNS_NAME=your-vpc-endpoint.com
    ```
