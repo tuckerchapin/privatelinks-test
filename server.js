@@ -40,6 +40,8 @@ const server = http.createServer((req, res) => {
       ...req.headers,
       host: PRIVATE_LINK_DNS_NAME,
     },
+    timeout: 30000, // 30 second timeout
+    rejectUnauthorized: false, // Accept self-signed certificates
   };
 
   // Log 2: Request sent to private link
@@ -75,8 +77,20 @@ const server = http.createServer((req, res) => {
   // Handle proxy request errors
   proxyReq.on("error", (err) => {
     console.error(`[${requestId}] PROXY ERROR: ${err.message}`);
+    console.error(`[${requestId}] PROXY ERROR CODE: ${err.code}`);
+    console.error(`[${requestId}] PROXY ERROR STACK: ${err.stack}`);
     res.writeHead(500);
-    res.end("Proxy Error");
+    res.end("Proxy Error: " + err.message);
+  });
+
+  // Handle timeout
+  proxyReq.on("timeout", () => {
+    console.error(
+      `[${requestId}] PROXY TIMEOUT: Request timed out after 30 seconds`,
+    );
+    proxyReq.destroy();
+    res.writeHead(504);
+    res.end("Gateway Timeout");
   });
 
   // Pipe the request body to the proxy request
