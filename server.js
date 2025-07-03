@@ -21,7 +21,7 @@ const server = http.createServer((req, res) => {
 
   // Prepare the target URL
   const targetUrl = url.format({
-    protocol: "https:",
+    protocol: "http:",
     hostname: PRIVATE_LINK_DNS_NAME,
     pathname: parsedUrl.pathname,
     search: parsedUrl.search,
@@ -128,5 +128,5 @@ const server = http.createServer((req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Proxy server running on port ${PORT}`);
-  console.log(`Forwarding all traffic to: https://${PRIVATE_LINK_DNS_NAME}`);
+  console.log(`Forwarding all traffic to: http://${PRIVATE_LINK_DNS_NAME}`);
 });
