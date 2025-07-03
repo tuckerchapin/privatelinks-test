@@ -13,6 +13,8 @@ if (!PRIVATE_LINK_DNS_NAME) {
 }
 
 const server = http.createServer((req, res) => {
+  const requestId = Date.now() + Math.random().toString(36).substr(2, 9);
+
   // Parse the incoming request URL
   const parsedUrl = url.parse(req.url);
 
@@ -24,6 +26,13 @@ const server = http.createServer((req, res) => {
     search: parsedUrl.search,
   });
 
+  // Log 1: Incoming request
+  console.log(
+    `[${requestId}] INCOMING: ${req.method} ${
+      req.url
+    } | Headers: ${JSON.stringify(req.headers)}`,
+  );
+
   // Configure the proxy request
   const options = {
     method: req.method,
@@ -33,10 +42,31 @@ const server = http.createServer((req, res) => {
     },
   };
 
+  // Log 2: Request sent to private link
+  console.log(
+    `[${requestId}] SENT TO VPC: ${
+      req.method
+    } ${targetUrl} | Headers: ${JSON.stringify(options.headers)}`,
+  );
+
   // Create the proxy request
   const proxyReq = https.request(targetUrl, options, (proxyRes) => {
+    // Log 3: Response received from private link
+    console.log(
+      `[${requestId}] RECEIVED FROM VPC: ${
+        proxyRes.statusCode
+      } | Headers: ${JSON.stringify(proxyRes.headers)}`,
+    );
+
     // Forward the status code and headers
     res.writeHead(proxyRes.statusCode, proxyRes.headers);
+
+    // Log 4: Response sent back to client
+    console.log(
+      `[${requestId}] SENT TO CLIENT: ${
+        proxyRes.statusCode
+      } | Headers: ${JSON.stringify(proxyRes.headers)}`,
+    );
 
     // Pipe the response back to the client
     proxyRes.pipe(res);
@@ -44,7 +74,7 @@ const server = http.createServer((req, res) => {
 
   // Handle proxy request errors
   proxyReq.on("error", (err) => {
-    console.error("Proxy request error:", err.message);
+    console.error(`[${requestId}] PROXY ERROR: ${err.message}`);
     res.writeHead(500);
     res.end("Proxy Error");
   });
