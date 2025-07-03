@@ -14,6 +14,7 @@ if (!PRIVATE_LINK_DNS_NAME) {
 
 const server = http.createServer((req, res) => {
   const requestId = Date.now() + Math.random().toString(36).substr(2, 9);
+  let responseEnded = false;
 
   // Parse the incoming request URL
   const parsedUrl = url.parse(req.url);
@@ -51,8 +52,23 @@ const server = http.createServer((req, res) => {
     } ${targetUrl} | Headers: ${JSON.stringify(options.headers)}`,
   );
 
+  // Helper function to end response safely
+  const endResponse = (statusCode, message) => {
+    if (!responseEnded) {
+      responseEnded = true;
+      try {
+        res.writeHead(statusCode);
+        res.end(message);
+      } catch (err) {
+        console.error(`[${requestId}] Error ending response: ${err.message}`);
+      }
+    }
+  };
+
   // Create the proxy request
   const proxyReq = https.request(targetUrl, options, (proxyRes) => {
+    if (responseEnded) return;
+
     // Log 3: Response received from private link
     console.log(
       `[${requestId}] RECEIVED FROM VPC: ${
@@ -61,26 +77,32 @@ const server = http.createServer((req, res) => {
     );
 
     // Forward the status code and headers
-    res.writeHead(proxyRes.statusCode, proxyRes.headers);
+    try {
+      res.writeHead(proxyRes.statusCode, proxyRes.headers);
+      responseEnded = true;
 
-    // Log 4: Response sent back to client
-    console.log(
-      `[${requestId}] SENT TO CLIENT: ${
-        proxyRes.statusCode
-      } | Headers: ${JSON.stringify(proxyRes.headers)}`,
-    );
+      // Log 4: Response sent back to client
+      console.log(
+        `[${requestId}] SENT TO CLIENT: ${
+          proxyRes.statusCode
+        } | Headers: ${JSON.stringify(proxyRes.headers)}`,
+      );
 
-    // Pipe the response back to the client
-    proxyRes.pipe(res);
+      // Pipe the response back to the client
+      proxyRes.pipe(res);
+    } catch (err) {
+      console.error(`[${requestId}] Error forwarding response: ${err.message}`);
+      endResponse(500, "Internal Server Error");
+    }
   });
 
   // Handle proxy request errors
   proxyReq.on("error", (err) => {
-    console.error(`[${requestId}] PROXY ERROR: ${err.message}`);
-    console.error(`[${requestId}] PROXY ERROR CODE: ${err.code}`);
-    console.error(`[${requestId}] PROXY ERROR STACK: ${err.stack}`);
-    res.writeHead(500);
-    res.end("Proxy Error: " + err.message);
+    console.error(
+      `[${requestId}] PROXY ERROR: ${err.message || "Unknown error"}`,
+    );
+    console.error(`[${requestId}] PROXY ERROR CODE: ${err.code || "Unknown"}`);
+    endResponse(502, "Bad Gateway: " + (err.message || "Connection failed"));
   });
 
   // Handle timeout
@@ -89,8 +111,15 @@ const server = http.createServer((req, res) => {
       `[${requestId}] PROXY TIMEOUT: Request timed out after 30 seconds`,
     );
     proxyReq.destroy();
-    res.writeHead(504);
-    res.end("Gateway Timeout");
+    endResponse(504, "Gateway Timeout");
+  });
+
+  // Handle client disconnect
+  req.on("close", () => {
+    if (!responseEnded) {
+      console.log(`[${requestId}] CLIENT DISCONNECTED`);
+      proxyReq.destroy();
+    }
   });
 
   // Pipe the request body to the proxy request
